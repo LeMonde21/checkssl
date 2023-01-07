@@ -24,7 +24,7 @@ pub struct ServerCert {
     pub is_valid: bool,
     pub time_to_expiration: String,
     pub public_key: String,
-    pub extensions: String,
+    pub extensions: Vec<String>
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -41,7 +41,7 @@ pub struct IntermediateCert {
     pub is_valid: bool,
     pub time_to_expiration: String,
     pub public_key: String,
-    pub extensions: String,
+    pub extensions: Vec<String>
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -155,7 +155,6 @@ impl CheckSSL {
                     let issuer = x509cert.issuer();
                     let subject = x509cert.subject();
                     //let public_key = x509cert
-                    let extensions = x509cert.extensions();
 
                     for rdn_seq in &issuer.rdn_seq {
                         match oid2sn(&rdn_seq.set[0].attr_type, &Default::default()) {
@@ -208,6 +207,18 @@ impl CheckSSL {
                         }
                     }
 
+
+                    if let Some((_, extensions)) = x509cert.extensions() {
+                        for name in extensions.general_names.iter() {
+                            match name {
+                                GeneralName::DNSName(dns) => {
+                                    server_cert.extensions.push(dns.to_string())
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+
                     if let Some(time_to_expiration) = x509cert.tbs_certificate.validity.time_to_expiration() {
                         server_cert.time_to_expiration = format!("{:?} day(s)", time_to_expiration.as_secs() / 60 / 60 / 24)
                     }
@@ -215,7 +226,6 @@ impl CheckSSL {
                     let issuer = x509cert.issuer();
                     let subject = x509cert.subject();
                     //let public_key = x509cert
-                    let extensions = x509cert.extensions();
 
                     for rdn_seq in &issuer.rdn_seq {
                         match oid2sn(&rdn_seq.set[0].attr_type, &Default::default()) {
