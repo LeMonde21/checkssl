@@ -3,7 +3,7 @@ use rustls::Session;
 use std::net::TcpStream;
 use std::io::{Write, Error, ErrorKind};
 use std::fmt::Debug;
-use x509_parser::{parse_x509_certificate};
+use x509_parser::{parse_x509_certificate, parse_x509_der};
 use x509_parser::objects::*;
 use x509_parser::extensions::*;
 use chrono::{Utc, TimeZone, DateTime};
@@ -24,7 +24,7 @@ pub struct ServerCert {
     pub is_valid: bool,
     pub time_to_expiration: String,
     pub public_key: String,
-    pub extensions: Vec<String>
+    pub extensions: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -41,7 +41,7 @@ pub struct IntermediateCert {
     pub is_valid: bool,
     pub time_to_expiration: String,
     pub public_key: String,
-    pub extensions: Vec<String>
+    pub extensions: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -76,12 +76,12 @@ impl CheckSSL {
         config.root_store.add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
 
         let rc_config = Arc::new(config);
-        let site = match webpki::DnsNameRef::try_from_ascii_str(domain) {
+        let site = match webpki::DNSNameRef::try_from_ascii_str(domain) {
             Ok(val) => val,
             Err(e) => return Err(Error::new(ErrorKind::InvalidInput, e.to_string())),
         };
 
-        let mut sess = rustls::ClientConnection::new(&rc_config, site);
+        let mut sess = rustls::ClientSession::new(&rc_config, site);
         let mut sock = TcpStream::connect(format!("{}:443", domain))?;
         let mut tls = rustls::Stream::new(&mut sess, &mut sock);
 
@@ -104,7 +104,7 @@ impl CheckSSL {
             is_valid: false,
             time_to_expiration: "".to_string(),
             public_key: "".to_string(),
-            extensions: "".to_string(),
+            extensions: Vec::new(),
         };
 
         let mut intermediate_cert = IntermediateCert {
@@ -120,12 +120,12 @@ impl CheckSSL {
             is_valid: false,
             time_to_expiration: "".to_string(),
             public_key: "".to_string(),
-            extensions: "".to_string(),
+            extensions: Vec::new(),
         };
 
         if let Some(certificates) = tls.sess.get_peer_certificates() {
             for certificate in certificates.iter() {
-                let x509cert = match parse_x509_certificate(certificate.as_ref()) {
+                let x509cert = match parse_x509_der(certificate.as_ref()) {
                     Ok((_, x509cert)) => x509cert,
                     Err(e) => return Err(Error::new(ErrorKind::Other, e.to_string())),
                 };
@@ -141,7 +141,7 @@ impl CheckSSL {
                     intermediate_cert.not_after = Utc.timestamp(x509cert.tbs_certificate.validity.not_after.timestamp(), 0);
                     intermediate_cert.not_before = Utc.timestamp(x509cert.tbs_certificate.validity.not_before.timestamp(), 0);
 
-                    match oid2sn(&x509cert.signature_algorithm.algorithm, &Default::default()) {
+                    match oid2sn(&x509cert.signature_algorithm.algorithm) {
                         Ok(s) => {
                             intermediate_cert.signature_algorithm = s.to_string();
                         }
@@ -157,7 +157,7 @@ impl CheckSSL {
                     //let public_key = x509cert
 
                     for rdn_seq in &issuer.rdn_seq {
-                        match oid2sn(&rdn_seq.set[0].attr_type, &Default::default()) {
+                        match oid2sn(&rdn_seq.set[0].attr_type) {
                             Ok(s) => {
                                 let rdn_content = rdn_seq.set[0].attr_value.content.as_str().unwrap().to_string();
                                 if s == "CN" {
@@ -169,7 +169,7 @@ impl CheckSSL {
                     }
 
                     for rdn_seq in &subject.rdn_seq {
-                        match oid2sn(&rdn_seq.set[0].attr_type, &Default::default()) {
+                        match oid2sn(&rdn_seq.set[0].attr_type) {
                             Ok(s) => {
                                 let rdn_content = rdn_seq.set[0].attr_value.content.as_str().unwrap().to_string();
                                 match s {
@@ -189,7 +189,7 @@ impl CheckSSL {
                     server_cert.not_after = Utc.timestamp(x509cert.tbs_certificate.validity.not_after.timestamp(), 0);
                     server_cert.not_before = Utc.timestamp(x509cert.tbs_certificate.validity.not_before.timestamp(), 0);
 
-                    match oid2sn(&x509cert.signature_algorithm.algorithm, &Default::default()) {
+                    match oid2sn(&x509cert.signature_algorithm.algorithm) {
                         Ok(s) => {
                             server_cert.signature_algorithm = s.to_string();
                         }
@@ -228,7 +228,7 @@ impl CheckSSL {
                     //let public_key = x509cert
 
                     for rdn_seq in &issuer.rdn_seq {
-                        match oid2sn(&rdn_seq.set[0].attr_type, &Default::default()) {
+                        match oid2sn(&rdn_seq.set[0].attr_type) {
                             Ok(s) => {
                                 let rdn_content = rdn_seq.set[0].attr_value.content.as_str().unwrap().to_string();
                                 if s == "CN" {
@@ -240,7 +240,7 @@ impl CheckSSL {
                     }
 
                     for rdn_seq in &subject.rdn_seq {
-                        match oid2sn(&rdn_seq.set[0].attr_type, &Default::default()) {
+                        match oid2sn(&rdn_seq.set[0].attr_type) {
                             Ok(s) => {
                                 let rdn_content = rdn_seq.set[0].attr_value.content.as_str().unwrap().to_string();
                                 match s {

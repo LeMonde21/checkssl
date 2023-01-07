@@ -12,9 +12,9 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rustls = "0.20.7"
-webpki-roots = "0.22.6"
-webpki = "0.22.0"
-x509-parser = "0.14.0"
+rustls = "0.18.0"
+webpki-roots = "0.20.0"
+webpki = "0.21.3"
+x509-parser = "0.8.0-beta4"
 chrono = { version = "0.4.13", features = [ 'serde' ] }
 serde = { version = "1.0.114", features = [ 'derive' ] }
