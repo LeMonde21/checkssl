@@ -3,7 +3,7 @@ use rustls::Session;
 use std::net::TcpStream;
 use std::io::{Write, Error, ErrorKind};
 use std::fmt::Debug;
-use x509_parser::{parse_x509_certificate, parse_x509_der};
+use x509_parser::{parse_x509_der};
 use x509_parser::objects::*;
 use x509_parser::extensions::*;
 use chrono::{Utc, TimeZone, DateTime};
@@ -11,37 +11,42 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerCert {
-    pub common_name: String,
+    pub issuer_common_name: String,
+    pub subject_common_name: String,
     pub signature_algorithm: String,
     pub sans: Vec<String>,
-    pub country: String,
-    pub state: String,
-    pub locality: String,
-    pub organization: String,
+    pub issuer_country: String,
+    pub subject_country: String,
+    pub issuer_state: String,
+    pub subject_state: String,
+    pub issuer_locality: String,
+    pub subject_locality: String,
+    pub issuer_organization: String,
+    pub subject_organization: String,
     pub not_after: DateTime<Utc>,
     pub not_before: DateTime<Utc>,
-    pub issuer: String,
     pub is_valid: bool,
     pub time_to_expiration: String,
-    pub public_key: String,
-    pub extensions: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct IntermediateCert {
-    pub common_name: String,
+    pub issuer_common_name: String,
+    pub subject_common_name: String,
     pub signature_algorithm: String,
-    pub country: String,
-    pub state: String,
-    pub locality: String,
-    pub organization: String,
+    pub sans: Vec<String>,
+    pub issuer_country: String,
+    pub subject_country: String,
+    pub issuer_state: String,
+    pub subject_state: String,
+    pub issuer_locality: String,
+    pub subject_locality: String,
+    pub issuer_organization: String,
+    pub subject_organization: String,
     pub not_after: DateTime<Utc>,
     pub not_before: DateTime<Utc>,
-    pub issuer: String,
     pub is_valid: bool,
     pub time_to_expiration: String,
-    pub public_key: String,
-    pub extensions: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -91,36 +96,41 @@ impl CheckSSL {
         tls.write_all(req.as_bytes())?;
 
         let mut server_cert = ServerCert {
-            common_name: "".to_string(),
+            issuer_common_name: "".to_string(),
             signature_algorithm: "".to_string(),
             sans: Vec::new(),
-            country: "".to_string(),
-            state: "".to_string(),
-            locality: "".to_string(),
-            organization: "".to_string(),
+            issuer_country: "".to_string(),
+            subject_country: "".to_string(),
+            issuer_state: "".to_string(),
+            subject_state: "".to_string(),
+            issuer_locality: "".to_string(),
+            subject_locality: "".to_string(),
+            issuer_organization: "".to_string(),
             not_after: Utc::now(),
             not_before: Utc::now(),
-            issuer: "".to_string(),
             is_valid: false,
             time_to_expiration: "".to_string(),
-            public_key: "".to_string(),
-            extensions: Vec::new(),
+            subject_common_name: "".to_string(),
+            subject_organization: "".to_string(),
         };
 
         let mut intermediate_cert = IntermediateCert {
-            common_name: "".to_string(),
+            issuer_common_name: "".to_string(),
             signature_algorithm: "".to_string(),
-            country: "".to_string(),
-            state: "".to_string(),
-            locality: "".to_string(),
-            organization: "".to_string(),
+            sans: vec![],
+            issuer_country: "".to_string(),
+            subject_country: "".to_string(),
+            issuer_state: "".to_string(),
+            subject_state: "".to_string(),
+            issuer_locality: "".to_string(),
+            subject_locality: "".to_string(),
+            issuer_organization: "".to_string(),
             not_after: Utc::now(),
             not_before: Utc::now(),
-            issuer: "".to_string(),
             is_valid: false,
             time_to_expiration: "".to_string(),
-            public_key: "".to_string(),
-            extensions: Vec::new(),
+            subject_common_name: "".to_string(),
+            subject_organization: "".to_string(),
         };
 
         if let Some(certificates) = tls.sess.get_peer_certificates() {
@@ -148,20 +158,25 @@ impl CheckSSL {
                         Err(_e) => return Err(Error::new(ErrorKind::Other, "Error converting Oid to Nid".to_string())),
                     }
 
+
                     if let Some(time_to_expiration) = x509cert.tbs_certificate.validity.time_to_expiration() {
                         intermediate_cert.time_to_expiration = format!("{:?} day(s)", time_to_expiration.as_secs() / 60 / 60 / 24)
                     }
 
                     let issuer = x509cert.issuer();
                     let subject = x509cert.subject();
-                    //let public_key = x509cert
 
                     for rdn_seq in &issuer.rdn_seq {
                         match oid2sn(&rdn_seq.set[0].attr_type) {
                             Ok(s) => {
                                 let rdn_content = rdn_seq.set[0].attr_value.content.as_str().unwrap().to_string();
-                                if s == "CN" {
-                                    intermediate_cert.issuer = rdn_content;
+                                match s {
+                                    "C" => intermediate_cert.issuer_country = rdn_content,
+                                    "ST" => intermediate_cert.issuer_state = rdn_content,
+                                    "L" => intermediate_cert.issuer_locality = rdn_content,
+                                    "CN" => intermediate_cert.issuer_common_name = rdn_content,
+                                    "O" => intermediate_cert.issuer_organization = rdn_content,
+                                    _ => {}
                                 }
                             }
                             Err(_e) => return Err(Error::new(ErrorKind::Other, "Error converting Oid to Nid".to_string())),
@@ -173,11 +188,11 @@ impl CheckSSL {
                             Ok(s) => {
                                 let rdn_content = rdn_seq.set[0].attr_value.content.as_str().unwrap().to_string();
                                 match s {
-                                    "C" => intermediate_cert.country = rdn_content,
-                                    "ST" => intermediate_cert.state = rdn_content,
-                                    "L" => intermediate_cert.locality = rdn_content,
-                                    "CN" => intermediate_cert.common_name = rdn_content,
-                                    "O" => intermediate_cert.organization = rdn_content,
+                                    "C" => intermediate_cert.subject_country = rdn_content,
+                                    "ST" => intermediate_cert.subject_state = rdn_content,
+                                    "L" => intermediate_cert.subject_locality = rdn_content,
+                                    "CN" => intermediate_cert.subject_common_name = rdn_content,
+                                    "O" => intermediate_cert.subject_organization = rdn_content,
                                     _ => {}
                                 }
                             }
@@ -208,31 +223,24 @@ impl CheckSSL {
                     }
 
 
-                    if let Some((_, extensions)) = x509cert.extensions() {
-                        for name in extensions.general_names.iter() {
-                            match name {
-                                GeneralName::DNSName(dns) => {
-                                    server_cert.extensions.push(dns.to_string())
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-
                     if let Some(time_to_expiration) = x509cert.tbs_certificate.validity.time_to_expiration() {
                         server_cert.time_to_expiration = format!("{:?} day(s)", time_to_expiration.as_secs() / 60 / 60 / 24)
                     }
 
                     let issuer = x509cert.issuer();
                     let subject = x509cert.subject();
-                    //let public_key = x509cert
 
                     for rdn_seq in &issuer.rdn_seq {
                         match oid2sn(&rdn_seq.set[0].attr_type) {
                             Ok(s) => {
                                 let rdn_content = rdn_seq.set[0].attr_value.content.as_str().unwrap().to_string();
-                                if s == "CN" {
-                                    server_cert.issuer = rdn_content;
+                                match s {
+                                    "C" => server_cert.issuer_country = rdn_content,
+                                    "ST" => server_cert.issuer_state = rdn_content,
+                                    "L" => server_cert.issuer_locality = rdn_content,
+                                    "CN" => server_cert.issuer_common_name = rdn_content,
+                                    "O" => server_cert.issuer_organization = rdn_content,
+                                    _ => {}
                                 }
                             }
                             Err(_e) => return Err(Error::new(ErrorKind::Other, "Error converting Oid to Nid".to_string())),
@@ -244,11 +252,11 @@ impl CheckSSL {
                             Ok(s) => {
                                 let rdn_content = rdn_seq.set[0].attr_value.content.as_str().unwrap().to_string();
                                 match s {
-                                    "C" => server_cert.country = rdn_content,
-                                    "ST" => server_cert.state = rdn_content,
-                                    "L" => server_cert.locality = rdn_content,
-                                    "CN" => server_cert.common_name = rdn_content,
-                                    "O" => server_cert.organization = rdn_content,
+                                    "C" => server_cert.subject_country = rdn_content,
+                                    "ST" => server_cert.subject_state = rdn_content,
+                                    "L" => server_cert.subject_locality = rdn_content,
+                                    "CN" => server_cert.subject_common_name = rdn_content,
+                                    "O" => server_cert.subject_organization = rdn_content,
                                     _ => {}
                                 }
                             }
